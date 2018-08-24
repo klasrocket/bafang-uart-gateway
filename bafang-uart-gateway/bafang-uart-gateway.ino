@@ -3,18 +3,13 @@
    Refer to this topic on https://endless-sphere.com for more information:
    https://endless-sphere.com/forums/viewtopic.php?f=2&t=94850&p=1389269
 */
+float speed = 0;
 
 //Commands for BBS controller
 const byte Hspeed[] = {0x16, 0x53, 0x0B, 0x03, 0xFF, 0xFF, 0x14, 0x04, 0x04, 0xFF, 0x14, 0x08, 0x00, 0x3C, 0xD2}; //program pedal settings speed:'by displays command'
 const byte Lspeed[] = {0x16, 0x53, 0x0B, 0x03, 0xFF, 0x1B, 0x14, 0x04, 0x04, 0xFF, 0x14, 0x08, 0x00, 0x3C, 0xEE}; //program pedal settings speed:27kph
 const byte readPed[] = {0x11, 0x53}; // read pedal settings
 const byte PAS0[] = {0x16, 0x0B, 0x00, 0x21, 0x00}; //command that display sends when turn off button is pressed
-
-
-//Hall sensor variables
-const int hallPin = 2;      // hall effect sensor pin
-int hallState = 0;          // 0=UnlimitedSpeed(with magnet) 1=LimitedSpeed(without magnet), assume UnlimitedSpeed
-bool firstHallValue = true; // Ignore first hall sensor reading, otherwise the BBS is programmed on each start-up
 
 //variables for parsing display/controller data
 byte DData[2];              //array to hold incomming display data
@@ -53,7 +48,7 @@ int DataExp = -1;                   //What data is expected from controller: -1=
 int nExpBytes = 0;                  //number of byte expected from controller
 int byteNo = 0;                     //number of bytes received from controller
 unsigned long  FirstByteTimestamp;  //time when first byte from controller was received
-const float wheelsize_m = 2.2 ;     //wheelsize in meters
+const float wheelsize_m = 1.5 ;     //wheelsize in meters
 
 bool logging = false;   //enable/disable logging over HC05
 int whosTalking = 0;    // keep track of who is talking; 0=display, 1=controller
@@ -63,56 +58,23 @@ void setup()
   Serial.begin(9600);  //HC-05 module @TX-18 RX19
   Serial2.begin(1200);    //Display DP-C18 @TX14 RX15
   Serial3.begin(1200);    //BBS02 controller @TX16 RX17
-
-  pinMode(hallPin, INPUT); // The hall effect sensor pin as an input
 }
 
 void loop()
 {
-  checkhall();
   readDisplay();
   readController();
   readTerminal();
 }
 
-void checkhall() {
-  // reading the state of the hall effect sensor pin
-  int hallStatetmp = digitalRead(hallPin);
-
-  // Ignore first hall sensor reading, do not program BBS02
-  if (firstHallValue) {
-    hallState = hallStatetmp;
-    firstHallValue = false;
-    return; // do nothing
-  }
-
-  //Only program controller when hall sensor state changes (not every reading)
-  if (hallState != hallStatetmp) {
-    hallState = hallStatetmp;
-
-    switch (hallState) {
-      case 1: //no magnet
-        changeSpeedLimitation(false); //Max 27kph
-        break;
-
-      case 0: //magnet present
-        changeSpeedLimitation(true); //Unlimited (By displays command)
-        break;
-    }
-  }
-}
-
-void changeSpeedLimitation(bool HighSpeed) {
-  //to avoid programming controller in de middle of a display command
-  //wait until controller starts responding
+/*void changeSpeedLimitation(bool HighSpeed) {
+  //to avoid programming controller in de middle of a display command, wait until controller starts responding
   while (whosTalking == 0) {
     readDisplay();
     readController();
   }
 
-  //clear messages send by controller
-  readControllerResponse(false);
-
+  readControllerResponse(false);   //clear messages send by controller
 
   bool PASsucces = false;
 
@@ -197,42 +159,29 @@ void readControllerResponse(bool echo) {
   }
 }
 
-
-void flushDisplay() {
-  //Read data from Display and do nothing, just clear the buffer
+void flushDisplay() {  //Read data from Display and do nothing, just clear the buffer
   while (Serial2.available() > 0) {
     byte dummy = Serial2.read();
   }
-}
+}*/
 
-void readController() {
-  // Read byte from the controller and send to Display
-  if (Serial3.available())
-  {
+void readController() {  // Read byte from the controller and send to Display
+  if (Serial3.available()) {
     parseController(Serial3.peek(), millis());
     Serial2.write(Serial3.read());
     whosTalking = 1;
-      //  Serial.write(Serial3.read());
-
   }
 }
 
-void readDisplay()  {
-
-  // Read byte from the Display and send to controller
-  if (Serial2.available())
-  {
+void readDisplay()  {  // Read byte from the Display and send to controller
+  if (Serial2.available()) {
     parseDisplay(Serial2.peek());
     Serial3.write(Serial2.read());
     whosTalking = 0;
-    //Serial.write(Serial2.read());
   }
 }
 
-
-void parseDisplay(byte Dincomming) {
-
-  //shift bytes
+void parseDisplay(byte Dincomming) {  //shift bytes
   DData[0] = DData[1];
   DData[1] = Dincomming;
 
@@ -242,7 +191,6 @@ void parseDisplay(byte Dincomming) {
     PASbyte = -1;
     PASExp = true; // next two bytes for setting PAS level are expected
   }
-
 
   //Keep track of how many PAS-level bytes are received
   if (PASExp) {
@@ -260,7 +208,6 @@ void parseDisplay(byte Dincomming) {
   if (!logging) {
     return;
   }
-
 
   //compare byte array 'DData' with known commands from display
   if (memcmp ( DData, DSpeed, sizeof(DData) ) == 0) {
@@ -287,14 +234,10 @@ void parseDisplay(byte Dincomming) {
     DataExp = -1;
     nExpBytes = 0;
   }
-
 }
 
 void parsePAS() {
-
-  int oldPAS = PASLevel;
-
-  //compare byte array with PAS levels
+  int oldPAS = PASLevel;  //compare byte array with PAS levels
   if (memcmp ( DData, DPAS0, sizeof(DData) ) == 0) {
     PASLevel = 0;
   }
@@ -307,14 +250,12 @@ void parsePAS() {
   else if (memcmp ( DData, DPAS6, sizeof(DData) ) == 0) {
     PASLevel = 3;
   }
-  
   else if (memcmp ( DData, DPAS8, sizeof(DData) ) == 0) {
     PASLevel = 4;
   }
   else if (memcmp ( DData, DPAS9, sizeof(DData) ) == 0) {
     PASLevel = 5;
   }
-
 
   // Only do if PAS level actually changed
   if (PASLevel != oldPAS) {
@@ -325,12 +266,9 @@ void parsePAS() {
     //Echo to HC05
     Serial.print("*P");
     Serial.print(PASLevel);
-    //Serial.print(",");
-    //Serial.print(millis());
     Serial.print("*");
   }
 }
-
 
 void parseController(byte Cincomming, unsigned long timestamp) {
   //when logging turned off, skip procedure
@@ -357,41 +295,43 @@ void parseController(byte Cincomming, unsigned long timestamp) {
 
   //when the number of expected bytes for a specific display command have been received, parse data
   if (nExpBytes == byteNo) {
-
     switch (DataExp) {
       case 0: //speed/
         Serial.print("*Spd");
-        Serial.print((CData[1] + CData[0] * 256) * wheelsize_m * 60 / 1000); //CData[1]=rpm when rpm>255 CData[0]=1 then 256 should be added to CData[1] for correct rpm
-        //Serial.print(",");
-        //Serial.print(FirstByteTimestamp);
+        float newSpeed = (CData[1] + CData[0] * 256) * wheelsize_m * 60 / 1000;
+        Serial.print(newSpeed); //CData[1]=rpm when rpm>255 CData[0]=1 then 256 should be added to CData[1] for correct rpm
+/*        if(speed <= 7 && newSpeed > 7) {
+          Serial3.write(DPAS, sizeof(DPAS));
+          Serial3.write(DPAS0, sizeof(DPAS0));
+          Serial.println("speed limit activated");
+        }
+        else if(speed > 7 && newSpeed <= 7) {
+          Serial3.write(DPAS, sizeof(DPAS));
+          Serial3.write(DPAS9, sizeof(DPAS9));
+          Serial.println("speed limit deactivated");
+        }
+        else */
         Serial.println("*");
+        speed = newSpeed;
         break;
       case 1: //amps
         Serial.print("*Amp");
         Serial.print(CData[0] / 2); // divided by two this seems to be the Amps value
-        //Serial.print(",");
-        //Serial.print(FirstByteTimestamp);
         Serial.println("*");
         break;
       case 2: //moving
         Serial.print("*Moving");
         Serial.print(CData[0]); //30=stationary, 31=bike is moving
-        //Serial.print(",");
-        //Serial.print(FirstByteTimestamp);
         Serial.println("*");
         break;
       case 3: //BatteryPercentage (?)
         Serial.print("*Bat");
         Serial.print(CData[0]);
-        //  Serial.print(",");
-        // Serial.print(FirstByteTimestamp);
         Serial.println("*");
         break;
       case 4: //UNKNOWN
         Serial.print("*U");
         Serial.print(CData[0]);
-        // Serial.print(",");
-        //Serial.print(FirstByteTimestamp);
         Serial.println("*");
         break;
     }
@@ -400,19 +340,19 @@ void parseController(byte Cincomming, unsigned long timestamp) {
   }
 }
 
-void readTerminal()  {
-  // read commands received from terminal
-  if (Serial.available())
-  {
+void readTerminal()  {  // read commands received from terminal
+  if (Serial.available()) {
     char terminal =  Serial.read();
-
     switch (terminal) {
       case 'l'://switch to limited speed
-        changeSpeedLimitation(false);
-        Serial.println("changeSpeedLimitation(false);");
+        Serial3.write(DPAS, sizeof(DPAS));
+        Serial3.write(DPAS0, sizeof(DPAS0));
+        Serial.println("low speed. ");
         break;
       case 'h'://switch to unlimited speed
-        Serial.println("changeSpeedLimitation(true);");
+        Serial3.write(DPAS, sizeof(DPAS));
+        Serial3.write(DPAS9, sizeof(DPAS9));
+        Serial.println("full speed! ");
         break;
       case '0':     // turn logging off
         logging = false;
@@ -425,10 +365,3 @@ void readTerminal()  {
     }
   }
 }
-
-
-
-
-
-
-
